@@ -1,0 +1,12 @@
+.git
+__pycache__/
+*.py[cod]
+*.log
+config.ini
+config.local.ini
+published_images.txt
+rss_feeds.txt
+rss_feeds.txt.save
+logs/
+data/published_images.txt
+data/rss_feeds.txt

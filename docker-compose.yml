@@ -1,0 +1,8 @@
+services:
+  tumblr-script:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./config.ini:/app/config.ini:ro
+      - ./data:/app/data
+      - ./logs:/app/logs

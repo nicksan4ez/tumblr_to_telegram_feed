@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+config.ini
+config.local.ini
+logs/
+published_images.txt
+rss_feeds.txt
+rss_feeds.txt.save
+data/rss_feeds.txt
+data/published_images.txt
