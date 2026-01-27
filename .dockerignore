@@ -10,3 +10,4 @@ rss_feeds.txt.save
 logs/
 data/published_images.txt
 data/rss_feeds.txt
+tmp/
