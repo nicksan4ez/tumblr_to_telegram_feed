@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import configparser
+import html
 import logging
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Set
@@ -86,9 +88,55 @@ def read_rss_feeds(file_path: Path) -> List[str]:
         return [line.strip() for line in file if line.strip()]
 
 
-def parse_rss_feed(url: str):
+def _read_rss_text(source: str) -> Optional[str]:
+    if source.startswith("file://"):
+        file_path = Path(source[7:])
+        if not file_path.exists():
+            logging.error("RSS file not found: %s", file_path)
+            return None
+        return file_path.read_text(encoding="utf-8", errors="ignore")
+    file_path = Path(source)
+    if file_path.exists():
+        return file_path.read_text(encoding="utf-8", errors="ignore")
+    request = urllib.request.Request(source, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read().decode("utf-8", errors="ignore")
+    except urllib.error.URLError as exc:
+        logging.error("Failed to fetch RSS feed %s: %s", source, exc)
+        return None
+
+
+def _local_tag(tag: str) -> str:
+    return tag.split("}", 1)[-1]
+
+
+def parse_rss_feed(url: str) -> List[str]:
     logging.info("Parsing RSS feed: %s", url)
-    return feedparser.parse(url)
+    xml_text = _read_rss_text(url)
+    if not xml_text:
+        return []
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        logging.error("Invalid RSS XML from %s: %s", url, exc)
+        return []
+    descriptions: List[str] = []
+    for item in root.iter():
+        if _local_tag(item.tag) != "item":
+            continue
+        content_encoded = None
+        description = None
+        for child in item:
+            name = _local_tag(child.tag)
+            if name == "encoded":
+                content_encoded = child.text
+            elif name == "description":
+                description = child.text
+        raw_html = content_encoded or description
+        if raw_html:
+            descriptions.append(html.unescape(raw_html))
+    return descriptions
 
 
 def _parse_srcset(srcset: str) -> List[tuple[str, float]]:
@@ -127,10 +175,9 @@ def _pick_largest_srcset_url(srcset: str) -> Optional[str]:
     return max(candidates, key=lambda item: item[1])[0]
 
 
-def extract_images(feed) -> List[str]:
+def extract_images(descriptions: Iterable[str]) -> List[str]:
     images: List[str] = []
-    for entry in getattr(feed, "entries", []):
-        description = entry.get("description")
+    for description in descriptions:
         if not description:
             continue
         soup = BeautifulSoup(description, "html.parser")
@@ -401,8 +448,8 @@ async def run(config_path: Path) -> None:
 
     bot = Bot(token=settings.bot_token)
     for rss_feed in rss_feeds:
-        feed = parse_rss_feed(rss_feed)
-        images = extract_images(feed)
+        descriptions = parse_rss_feed(rss_feed)
+        images = extract_images(descriptions)
         await send_images(
             bot,
             settings.chat_id,
